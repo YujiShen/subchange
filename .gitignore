@@ -1,2 +1,6 @@
 config.ini
 .idea/
+.stignore
+.vscode/
+__pycache__/
+test.py

@@ -1,11 +1,13 @@
 [SUB]
 UPPER_FS = 18
 BOTTOM_FS = 12
+OTHER_FS = 16
+SUB_FILE_EXTENSIONS = [".ass", ".srt", ".ssa"]
 
 [FILE]
-TV_EPISODE_PATTERN = S\d\dE\d\d
+TV_EPISODE_PATTERN = S\d\d\.?E\d\d
 NEW_SUB_EXTENSION = .zh.ass
-MEDIA_FILE_EXTENSIONS = [".mkv", ".mp4"]
+MEDIA_FILE_EXTENSIONS = [".mkv", ".mp4", ".m4v"]
 EXTRACT_PATTERN = 简体&英文.ass
 
 [SSH]

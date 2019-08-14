@@ -8,6 +8,9 @@ import chardet
 import configparser
 import json
 import argparse
+from collections import defaultdict
+
+# TODO combine English and Chinese subs
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -21,13 +24,12 @@ def detect_encoding(sub_path):
     return encoding
 
 
-def get_sub_name(media_name, sub_name, is_episode_number=False):
-    if is_episode_number:
-        return re.sub(config['FILE']['TV_EPISODE_PATTERN'], sub_name, media_name) + config['FILE']['NEW_SUB_EXTENSION']
-    episode = get_tv_episode(sub_name)
+def get_sub_name(media_name, sub_name, lang=None):
+    episode = get_tv_episode(media_name, False)
     if episode:
-        new_sub_name = re.sub(config['FILE']['TV_EPISODE_PATTERN'], episode, media_name) + config['FILE'][
-            'NEW_SUB_EXTENSION']
+        new_sub_name = re.sub(config['FILE']['TV_EPISODE_PATTERN'], episode, media_name, flags=re.IGNORECASE) + \
+                       config['FILE'][
+                           'NEW_SUB_EXTENSION']
     else:
         new_sub_name = media_name + config['FILE']['NEW_SUB_EXTENSION']
     return new_sub_name
@@ -51,13 +53,23 @@ def update_sub(sub):
         upper = trans[0]
         bottom = trans[1]
         event.text = r"{0}\N{1}{2}".format(bottom, ass_fs(config['SUB']['BOTTOM_FS']), upper)
+        event.style = "Default"
 
     def update_style():
+        for key, value in sub.styles.items():
+            sub.styles[key].fontsize = config['SUB']['OTHER_FS']
         sub_default = pysubs2.load('default.ass')
         sub.import_styles(sub_default)
 
     def update_info():
         sub.info['ScaledBorderAndShadow'] = 'no'
+        if 'PlayResX' in sub.info:
+            del sub.info['PlayResX']
+        if 'PlayResY' in sub.info:
+            del sub.info['PlayResY']
+
+    def change_inline_fs(event):
+        event.text = re.sub("(?<=\\\\fs)\d+(?=[\\\\}])", str(config['SUB']['OTHER_FS']), event.text)
 
     update_style()
     update_info()
@@ -65,18 +77,27 @@ def update_sub(sub):
     for e in sub.events:
         if e.text.find(r'\N') != -1 and e.text.find(r'{\pos') == -1:
             swap_upper_bottom(e)
+        else:
+            change_inline_fs(e)
     return sub
 
 
-def handle_sub(sub_path, media_path):
+def handle_sub(sub_path, media_path, update):
     sub_encoding = detect_encoding(sub_path)
     sub = pysubs2.load(sub_path, sub_encoding)
-    new_sub = update_sub(sub)
+    if update:
+        new_sub = update_sub(sub)
+    else:
+        new_sub = sub
     return save_sub(new_sub, media_path, sub_path)
 
 
 def is_video_file(filename):
     return os.path.splitext(os.path.basename(filename))[1] in json.loads(config['FILE']['MEDIA_FILE_EXTENSIONS'])
+
+
+def is_sub_file(filename):
+    return os.path.splitext(os.path.basename(filename))[1] in json.loads(config['SUB']['SUB_FILE_EXTENSIONS'])
 
 
 def get_ssh_client():
@@ -96,17 +117,20 @@ def get_ssh_client():
     return ssh
 
 
-def single_sub_process(media_path, sub_path, sftp):
+def single_sub_process(media_path, sub_path, sftp, update=True):
     """process single sub (flip subtitle lines, rename with media name, copy to remote server"""
-    new_sub_local_path = handle_sub(sub_path, media_path)
+    new_sub_local_path = handle_sub(sub_path, media_path, update)
     new_sub_remote_path = os.path.join(os.path.dirname(media_path), os.path.basename(new_sub_local_path))
     sftp.put(new_sub_local_path, new_sub_remote_path)
 
 
-def get_tv_episode(filename):
-    m = re.search(config['FILE']['TV_EPISODE_PATTERN'], filename)
+def get_tv_episode(filename, formatting=True):
+    m = re.search(config['FILE']['TV_EPISODE_PATTERN'], filename, re.IGNORECASE)
     if m:
-        return re.search(config['FILE']['TV_EPISODE_PATTERN'], filename)[0]
+        if formatting:
+            return m[0].upper().replace('.', '')
+        else:
+            return m[0]
     else:
         return False
 
@@ -121,7 +145,18 @@ def get_tv_sub_dict(sub_dir):
     return sub_file_name_dict
 
 
-def multi_subs_process(media_dir, sub_dir, sftp):
+def get_tv_sub_dict_list(media_dir):
+    medias = os.listdir(media_dir)
+    sub_files = [f for f in medias if is_sub_file(f)]
+    sub_file_name_dict_list = defaultdict(list)
+    for sub_name in sub_files:
+        episode = get_tv_episode(sub_name)
+        if episode and episode:
+            sub_file_name_dict_list[episode].append(sub_name)
+    return sub_file_name_dict_list
+
+
+def multi_subs_process(media_dir, sub_dir, sftp, update=True):
     """
     multiple subs in one folder (for TV), subtitle must contain episode number with format "S00E00"
     """
@@ -134,7 +169,7 @@ def multi_subs_process(media_dir, sub_dir, sftp):
             media_path = os.path.join(media_dir, m)
             if episode in sub_file_name_dict:
                 sub_path = os.path.join(sub_dir, sub_file_name_dict[episode])
-                single_sub_process(media_path, sub_path, sftp)
+                single_sub_process(media_path, sub_path, sftp, update)
             else:
                 print("Episode {episode} subtitle is absent.".format(episode=episode))
 
@@ -157,6 +192,69 @@ def rename_files(sub_dir, season, init_episode=1):
         new_name = 'S' + format(int(season), '02') + 'E' + format(init_episode, '02') + '.ass'
         os.rename(os.path.join(sub_dir, f), os.path.join(sub_dir, new_name))
         init_episode += 1
+
+
+# def transfer_sub(old_sub_path, new_media_path):
+#     shutil.copy2(sub_e.path, output_dir)
+#
+#
+# def transfer_subs(old_media_dir, new_media_dir):
+#     old_sub_dict_list = get_tv_sub_dict_list(old_media_dir)
+#     media_files = os.listdir(new_media_dir)
+#     media_file_names = [f for f in media_files if is_video_file(f)]
+#     for m in media_file_names:
+#         episode = get_tv_episode(m)
+#         if episode:
+#             media_path = os.path.join(media_dir, m)
+#             if episode in sub_file_name_dict:
+#                 sub_path = os.path.join(sub_dir, sub_file_name_dict[episode])
+#                 single_sub_process(media_path, sub_path, sftp)
+#             else:
+#                 print("Episode {episode} subtitle is absent.".format(episode=episode))
+
+def merge_subs(sub_zh_path, sub_en_path):
+    """
+    Merge Chinese and English subtitles into one, using styles to distinguish them
+    """
+    sub_zh = pysubs2.load(sub_zh_path, detect_encoding(sub_zh_path))
+    sub_en = pysubs2.load(sub_en_path)
+
+    sub_default = pysubs2.load('default.ass')
+    sub_zh.rename_style("Default", "Chinese")
+    sub_zh.import_styles(sub_default)
+    sub_en.rename_style("Default", "English")
+    sub_zh.events = sub_zh.events + sub_en.events
+    sub_zh.sort()
+    for e in sub_zh.events:
+        e.plaintext = e.plaintext.replace("\n", " - ")
+    sub_zh.info['ScaledBorderAndShadow'] = 'no'
+    return sub_zh
+
+
+def merge_single_subs(sub_zh_path, sub_en_path):
+    new_sub = merge_subs(sub_zh_path, sub_en_path)
+    new_sub_path = sub_zh_path + ".ass"
+    new_sub.save(new_sub_path)
+    return new_sub_path
+
+
+def merge_multi_subs(sub_zh_dir, sub_en_dir):
+    sub_zhs = os.listdir(sub_zh_dir)
+    sub_zh_names = [f for f in sub_zhs if is_sub_file(f)]
+    sub_en_name_dict = get_tv_sub_dict(sub_en_dir)
+    for sub_zh_name in sub_zh_names:
+        episode = get_tv_episode(sub_zh_name)
+        if episode:
+            sub_zh_path = os.path.join(sub_zh_dir, sub_zh_name)
+            if episode in sub_en_name_dict:
+                sub_en_path = os.path.join(sub_en_dir, sub_en_name_dict[episode])
+                merge_single_subs(sub_zh_path, sub_en_path)
+                # Remove original file for following transfer
+                os.remove(sub_zh_path)
+            else:
+                print("Episode {episode} subtitle is absent.".format(episode=episode))
+
+
 
 
 def main():
@@ -184,6 +282,12 @@ def main():
     parser_rename.add_argument("-s", "--season", required=True, type=int)
     parser_rename.add_argument("-e", "--init_episode", default=1)
 
+    parser_merge = subparsers.add_parser('merge',
+                                         help='Merge subtitles')
+    parser_merge.add_argument("-zh", "--zh_dir", required=True)
+    parser_merge.add_argument("-en", "--en_dir", required=True)
+    parser_merge.add_argument("-m", "--media_dir", required=True)
+
     args = parser.parse_args()
 
     if args.subparser_name == 'single':
@@ -198,6 +302,10 @@ def main():
         extract_files(args.input, args.output)
     elif args.subparser_name == 'rename':
         rename_files(args.input, args.season, args.init_episode)
+    elif args.subparser_name == 'merge':
+        merge_multi_subs(args.zh_dir, args.en_dir)
+        ssh = get_ssh_client()
+        multi_subs_process(args.media_dir, args.zh_dir, ssh.open_sftp(), False)
     else:
         parser.print_help()
 
