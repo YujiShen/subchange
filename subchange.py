@@ -174,15 +174,17 @@ def multi_subs_process(media_dir, sub_dir, sftp, update=True):
                 print("Episode {episode} subtitle is absent.".format(episode=episode))
 
 
-def extract_files(input_idr, output_dir):
+def extract_files(input_idr, output_dir, pattern):
     """Extract files from subdirectories"""
+    if not pattern:
+        pattern = config['FILE']['EXTRACT_PATTERN']
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
     with os.scandir(input_idr) as it:
         for e in it:
             if e.is_dir():
                 with os.scandir(e.path) as sub_it:
                     for sub_e in sub_it:
-                        if sub_e.is_file and re.search(config['FILE']['EXTRACT_PATTERN'], sub_e.name):
+                        if sub_e.is_file and re.search(pattern, sub_e.name):
                             shutil.copy2(sub_e.path, output_dir)
 
 
@@ -283,9 +285,10 @@ def main():
     parser_multi.add_argument("-s", "--sub_dir", required=True)
 
     parser_extract = subparsers.add_parser('extract',
-                                           help='Extract files from subdirectories follow EXTRACT_PATTERN in config.ini')
+                                           help='Extract files from subdirectories follow pattern given or EXTRACT_PATTERN in config.ini')
     parser_extract.add_argument("-i", "--input", required=True)
     parser_extract.add_argument("-o", "--output", required=True)
+    parser_extract.add_argument("-p", "--pattern")
 
     parser_rename = subparsers.add_parser('rename',
                                           help='Rename subtitle files in sequence')
@@ -314,7 +317,7 @@ def main():
         multi_subs_process(args.media_dir, args.sub_dir, ssh.open_sftp())
         ssh.close()
     elif args.subparser_name == 'extract':
-        extract_files(args.input, args.output)
+        extract_files(args.input, args.output, args.pattern)
     elif args.subparser_name == 'rename':
         rename_files(args.input, args.season, args.init_episode)
     elif args.subparser_name == 'merge':
