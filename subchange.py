@@ -255,6 +255,17 @@ def merge_multi_subs(sub_zh_dir, sub_en_dir):
                 print("Episode {episode} subtitle is absent.".format(episode=episode))
 
 
+def shift_sub(sub_path, ms):
+    sub = pysubs2.load(sub_path, detect_encoding(sub_path))
+    sub.shift(ms=ms)
+    sub.save(sub_path)
+
+
+def shift_subs(sub_dir, ms):
+    sub_file_names = [f for f in os.listdir(sub_dir) if is_sub_file(f)]
+    for sub_file_name in sub_file_names:
+        sub_path = os.path.join(sub_dir, sub_file_name)
+        shift_sub(sub_path, ms)
 
 
 def main():
@@ -288,6 +299,10 @@ def main():
     parser_merge.add_argument("-en", "--en_dir", required=True)
     parser_merge.add_argument("-m", "--media_dir", required=True)
 
+    parser_shift = subparsers.add_parser('shift', help='Shift subtitles')
+    parser_shift.add_argument("-ms", "--ms", required=True, type=int)
+    parser_shift.add_argument("-s", "--sub_dir", required=True)
+
     args = parser.parse_args()
 
     if args.subparser_name == 'single':
@@ -306,6 +321,8 @@ def main():
         merge_multi_subs(args.zh_dir, args.en_dir)
         ssh = get_ssh_client()
         multi_subs_process(args.media_dir, args.zh_dir, ssh.open_sftp(), False)
+    elif args.subparser_name == 'shift':
+        shift_subs(args.sub_dir, args.ms)
     else:
         parser.print_help()
 
