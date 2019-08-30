@@ -69,7 +69,7 @@ def update_sub(sub):
             del sub.info['PlayResY']
 
     def change_inline_fs(event):
-        event.text = re.sub("(?<=\\\\fs)\d+(?=[\\\\}])", str(config['SUB']['OTHER_FS']), event.text)
+        event.text = re.sub(r"(?<=\\\\fs)\d+(?=[\\\\}])", str(config['SUB']['OTHER_FS']), event.text)
 
     update_style()
     update_info()
@@ -196,6 +196,18 @@ def rename_files(sub_dir, season, init_episode=1):
         init_episode += 1
 
 
+def rename_from_file(sub_dir, name_file):
+    sub_files = sorted(os.listdir(sub_dir))
+    with open(name_file) as fp:
+        for line_number, new_name in enumerate(fp):
+            if not re.search(r".+\.\w+", new_name):
+                raise Exception("Please add file extension!")
+            new_name = new_name.rstrip()
+            new_name = re.sub(r"\s{0,}:\s{0,}", " - ", new_name)
+            new_name = re.sub(r"\s{0,}/\s{0,}", ", ", new_name)
+            os.rename(os.path.join(sub_dir, sub_files[line_number]), os.path.join(sub_dir, new_name))
+
+
 # def transfer_sub(old_sub_path, new_media_path):
 #     shutil.copy2(sub_e.path, output_dir)
 #
@@ -296,6 +308,11 @@ def main():
     parser_rename.add_argument("-s", "--season", required=True, type=int)
     parser_rename.add_argument("-e", "--init_episode", default=1)
 
+    parser_rename = subparsers.add_parser('rename_from',
+                                          help='Rename subtitle files from name list')
+    parser_rename.add_argument("-i", "--input", required=True)
+    parser_rename.add_argument("-n", "--name_file", required=True)
+
     parser_merge = subparsers.add_parser('merge',
                                          help='Merge subtitles')
     parser_merge.add_argument("-zh", "--zh_dir", required=True)
@@ -320,6 +337,8 @@ def main():
         extract_files(args.input, args.output, args.pattern)
     elif args.subparser_name == 'rename':
         rename_files(args.input, args.season, args.init_episode)
+    elif args.subparser_name == 'rename_from':
+        rename_from_file(args.input, args.name_file)
     elif args.subparser_name == 'merge':
         merge_multi_subs(args.zh_dir, args.en_dir)
         ssh = get_ssh_client()
