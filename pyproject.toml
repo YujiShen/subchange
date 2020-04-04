@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "subchange"
+version = "0.1.0"
+description = ""
+authors = ["Yuji Shen <me@yuji.sh>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+pysubs2 = "^0.2.4"
+paramiko = "^2.7.1"
+chardet = "^3.0.4"
+
+[tool.poetry.dev-dependencies]
+flake8 = "*"
+black = "^19.10b0"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
