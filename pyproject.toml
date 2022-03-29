@@ -7,7 +7,7 @@ authors = ["Yuji Shen <me@yuji.sh>"]
 [tool.poetry.dependencies]
 python = "^3.8"
 pysubs2 = "^0.2.4"
-paramiko = "^2.7.1"
+paramiko = "^2.10.1"
 chardet = "^3.0.4"
 
 [tool.poetry.dev-dependencies]
